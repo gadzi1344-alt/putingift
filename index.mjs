@@ -10,8 +10,15 @@ function roll() {
 function prizes(env) {
   return [env.PRIZE_HEART, env.PRIZE_CRYSTAL, env.PRIZE_CHAMPAGNE, env.PRIZE_NFT];
 }
+function apiBase(env) {
+  try {
+    const url = new URL(env.BOT_API_BASE || '');
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return null;
+    return url.toString().replace(/\/+$/, '');
+  } catch { return null; }
+}
 function configured(env) {
-  return env.PURCHASES_ENABLED === 'true' && /^@[A-Za-z0-9_]{5,32}$/.test(env.SUPPORT_USERNAME || '') && prizes(env).every(x => typeof x === 'string' && x.trim().length > 0 && x.length <= 120);
+  return !!apiBase(env) && env.PURCHASES_ENABLED === 'true' && /^@[A-Za-z0-9_]{5,32}$/.test(env.SUPPORT_USERNAME || '') && prizes(env).every(x => typeof x === 'string' && x.trim().length > 0 && x.length <= 120);
 }
 function support(env) { return env.SUPPORT_USERNAME || 'администратору'; }
 function details(env) {
@@ -19,11 +26,14 @@ function details(env) {
   return `🎁 PutinGift\n\nОткрытие кейса: ${PRICE} ⭐\n\nВозможные призы:\n• ${p[0] || 'Сердце'} — 33%\n• ${p[1] || 'Кристалл'} — 33%\n• ${p[2] || 'Шампанское'} — 33%\n• ${p[3] || 'NFT-подарок (будет указан перед запуском)'} — 1%\n\nКаждый приз выдаёт администратор вручную. После выигрыша напишите ${support(env)} и укажите номер выигрыша. Выдача не автоматическая.`;
 }
 async function telegram(env, method, body) {
-  const response = await fetch(`https://api.telegram.org/bot${env.BOT_TOKEN}/${method}`, {
-    method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)
+  const base = apiBase(env);
+  if (!base) throw new Error('BOT_API_BASE is not configured as HTTPS');
+  // Never follow redirects: the bot token is in the API request URL.
+  const response = await fetch(`${base}/bot${env.BOT_TOKEN}/${method}`, {
+    method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body), redirect: 'manual'
   });
   const result = await response.json();
-  if (!response.ok || !result.ok) throw new Error(`Telegram ${method} failed: ${result.description || response.status}`);
+  if (!response.ok || !result.ok) throw new Error(`Bot API ${method} failed (HTTP ${response.status})`);
   return result.result;
 }
 async function send(env, chatId, text, extra = {}) {
@@ -106,6 +116,7 @@ async function setup(request, env) {
     let difference = 0;
     for (let i=0; i<password.length; i++) difference |= password.charCodeAt(i) ^ env.SETUP_PASSWORD.charCodeAt(i);
     if (difference !== 0) return json('Неверный пароль.', 403);
+    if (!apiBase(env)) return json('Укажите проверенный HTTPS-адрес Bot API JonoGram в BOT_API_BASE.', 400);
     if (!env.BOT_TOKEN || !env.WEBHOOK_SECRET || !env.DB) return json('Проверьте секреты BOT_TOKEN, WEBHOOK_SECRET и привязку базы DB.', 400);
     await env.DB.prepare(`CREATE TABLE IF NOT EXISTS wins (charge_id TEXT PRIMARY KEY, order_id TEXT NOT NULL UNIQUE, user_id TEXT NOT NULL, username TEXT NOT NULL DEFAULT '', prize TEXT NOT NULL, created_at TEXT NOT NULL)`).run();
     await env.DB.prepare('CREATE INDEX IF NOT EXISTS wins_user_created ON wins (user_id, created_at DESC)').run();
@@ -114,7 +125,8 @@ async function setup(request, env) {
     await telegram(env, 'setWebhook', {url:url.toString(), secret_token:env.WEBHOOK_SECRET, allowed_updates:['message','callback_query','pre_checkout_query']});
     return json('Готово! Бот подключён. Теперь удалите секрет SETUP_PASSWORD в Cloudflare и отправьте боту /start.');
   } catch (e) {
-    console.error('Setup failed:', e?.message || 'unknown error');
+    // Fetch errors can include sensitive request URLs; never log them.
+    console.error('Setup failed. Check Bot API, webhook secret and D1.');
     return json('Не удалось подключить бота. Проверьте токен, WEBHOOK_SECRET и базу D1.', 500);
   }
 }
@@ -131,9 +143,9 @@ export default {
       return new Response('OK');
     } catch (err) {
       // Do not log the bot token or complete Telegram request URLs.
-      console.error('Update processing failed', err?.message || 'unknown error');
+      console.error('Update processing failed. Check Bot API, webhook and D1.');
       return new Response('Temporary error', {status: 500});
     }
   }
 };
-export {roll, configured};
+export {roll, configured, apiBase};
