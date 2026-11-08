@@ -1,0 +1,17 @@
+name = "putingift"
+main = "index.mjs"
+compatibility_date = "2026-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "putingift-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+
+[vars]
+# Change to "true" ONLY after filling in all prize names and support username.
+PURCHASES_ENABLED = "false"
+SUPPORT_USERNAME = ""
+PRIZE_HEART = ""
+PRIZE_CRYSTAL = ""
+PRIZE_CHAMPAGNE = ""
+PRIZE_NFT = ""
