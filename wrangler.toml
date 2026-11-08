@@ -5,7 +5,7 @@ compatibility_date = "2026-11-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "putingift-db"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "52c256ce-6bef-42a4-b37a-8a97937be843"
 
 [vars]
 # Change to "true" ONLY after filling in all prize names and support username.
